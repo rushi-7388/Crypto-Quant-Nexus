@@ -1,0 +1,5 @@
+# Alpha fusion component weights (must sum ~1.0)
+flow: 0.35
+regime: 0.25
+momentum: 0.25
+funding: 0.15

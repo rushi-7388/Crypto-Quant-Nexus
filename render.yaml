@@ -1,0 +1,32 @@
+# Render blueprint — split Streamlit hub + FastAPI (apply via Dashboard → Blueprint)
+# Docs: docs/deploy-render.md
+
+services:
+  - type: web
+    name: cryptoquant-nexus-hub
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: STREAMLIT_SERVER_HEADLESS
+        value: "true"
+      - key: LOG_LEVEL
+        value: INFO
+      # Set by Render from the API service URL (append /docs in the hub app)
+      - key: API_DOCS_URL
+        fromService:
+          name: cryptoquant-nexus-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+
+  - type: web
+    name: cryptoquant-nexus-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.api
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: LOG_LEVEL
+        value: INFO
+      # Render injects PORT automatically; Dockerfile.api reads it at startup

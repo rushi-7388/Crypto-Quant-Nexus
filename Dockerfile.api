@@ -1,3 +1,4 @@
+# FastAPI + inference worker (port 8000). Hub/UI uses Dockerfile.
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -12,6 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY quant_core/ ./quant_core/
 COPY api/ ./api/
+COPY worker/ ./worker/
 
 USER appuser
 EXPOSE 8000

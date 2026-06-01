@@ -13,6 +13,13 @@ streamlit/secrets.toml
 artifacts/models/**/*
 !artifacts/models/.gitkeep
 artifacts/data/cache/*.parquet
+artifacts/audit/*.jsonl
+artifacts/events/*.jsonl
+artifacts/canary/*.json
+artifacts/copilot/*
+!artifacts/copilot/.gitkeep
+artifacts/research/*
+!artifacts/research/.gitkeep
 mlruns/
 .pytest_cache/
 .coverage

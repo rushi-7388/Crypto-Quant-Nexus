@@ -1,4 +1,4 @@
-.PHONY: install dev lint test train api hub alpha compose up cache-universe
+.PHONY: install dev lint test train api hub alpha ops compose up cache-universe
 
 install:
 	pip install -r requirements.txt
@@ -7,7 +7,7 @@ dev:
 	pip install -r requirements-dev.txt
 
 lint:
-	ruff check quant_core api tests mlops scripts
+	ruff check quant_core api tests mlops scripts worker ops-dashboard
 
 test:
 	pytest --cov=quant_core --cov=api --cov-report=term-missing
@@ -23,6 +23,9 @@ hub:
 
 alpha:
 	streamlit run alpha-terminal/app.py
+
+ops:
+	streamlit run ops-dashboard/app.py
 
 cache-universe:
 	python scripts/cache_universe.py

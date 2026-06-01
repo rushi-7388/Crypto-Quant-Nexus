@@ -1,7 +1,5 @@
 """Research engine — backtest, alpha fusion."""
 
-import numpy as np
-
 from quant_core.data import synthetic_ohlcv
 from quant_core.research.alpha_fusion import composite_alpha
 from quant_core.research.backtest import purged_walk_forward_splits
@@ -16,8 +14,6 @@ def test_purged_splits_respect_gap():
 
 
 def test_composite_alpha_bounds():
-    df = synthetic_ohlcv(400, seed=1)
-    # Patch resolve inside composite - uses live path; use_live=False via synthetic chain
     result = composite_alpha("BTC/USDT", use_live=False, window=350)
     assert -1.0 <= result["composite_score"] <= 1.0
     assert result["recommendation"] in {

@@ -1,6 +1,6 @@
 [project]
 name = "crypto-quant-nexus"
-version = "3.0.0"
+version = "4.1.0"
 description = "Institutional-style crypto quant analytics with DevOps and MLOps"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -31,6 +31,10 @@ ignore = ["E501"]
 [tool.ruff.lint.per-file-ignores]
 "mlops/training/*.py" = ["E402"]
 "quant_core/theme.py" = ["F541"]
+"scripts/cache_universe.py" = ["E402"]
+"worker/inference_worker.py" = ["E402"]
+"ops-dashboard/app.py" = ["E402"]
+"nexus-hub/app.py" = ["E402"]
 
 [tool.coverage.run]
 source = ["quant_core", "api"]

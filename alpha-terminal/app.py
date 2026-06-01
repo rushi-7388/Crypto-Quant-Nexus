@@ -15,6 +15,7 @@ from quant_core.logging_config import configure_logging
 from quant_core.platform.catalog import ASSET_UNIVERSE, cache_ohlcv, list_universe
 from quant_core.platform.quality import ohlcv_quality_report
 from quant_core.research.alpha_fusion import composite_alpha, fuse_multi_asset
+from quant_core.research.backtest_store import persist_backtest_snapshot
 from quant_core.research.flow_backtest import run_flow_alpha_backtest
 from quant_core.theme import inject_theme, render_footer, render_header
 
@@ -82,6 +83,14 @@ with tab_bt:
     if st.button("Run Flow Alpha backtest", type="primary"):
         with st.spinner("Walk-forward folds…"):
             bt = run_flow_alpha_backtest(df, symbol=symbol)
+            persist_backtest_snapshot(
+                symbol=symbol,
+                feed=feed,
+                metrics=bt.metrics,
+                folds=bt.folds,
+                oos_points=len(bt.equity_curve),
+                source="alpha-terminal",
+            )
         m = bt.metrics
         cols = st.columns(5)
         cols[0].metric("Sharpe", f"{m['sharpe']:.2f}")

@@ -3,7 +3,13 @@
 import numpy as np
 import pandas as pd
 
-from quant_core.metrics import annualized_vol, max_drawdown, performance_summary, sharpe_ratio, sortino_ratio
+from quant_core.metrics import (
+    annualized_vol,
+    max_drawdown,
+    performance_summary,
+    sharpe_ratio,
+    sortino_ratio,
+)
 
 
 def test_sharpe_zero_on_flat_returns():

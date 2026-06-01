@@ -1,0 +1,9 @@
+"""Launch Ops Dashboard."""
+
+import subprocess
+import sys
+from pathlib import Path
+
+if __name__ == "__main__":
+    app = Path(__file__).resolve().parent / "app.py"
+    subprocess.run([sys.executable, "-m", "streamlit", "run", str(app), *sys.argv[1:]], check=True)

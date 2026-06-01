@@ -1,4 +1,4 @@
-# Crypto Quant Nexus 3.0
+# Crypto Quant Nexus 4.0
 
 <p align="center">
   <strong>Institutional-grade crypto quantitative analytics for research, demos, and product showcases</strong>
@@ -10,11 +10,11 @@
   </a>
   &nbsp;
   <a href="https://github.com/rushi-7388">GitHub</a> ·
-  Python 3.11+ · Streamlit · FastAPI · MLflow · MIT License
+  Python 3.11+ · Streamlit · FastAPI · MLflow · Redpanda · MIT License
 </p>
 
 <p align="center">
-  <em>v3.0 Global Research Edition — alpha fusion · walk-forward backtests · 6-asset universe</em>
+  <em>v4.0 Forward-Deployed Edition — feature parity · shadow rollout · event-driven inference</em>
 </p>
 
 ---
@@ -27,7 +27,7 @@
 |---|---|
 | **Creator** | [Rushi Dave](https://github.com/rushi-7388) |
 | **Repository** | [github.com/rushi-7388/Crypto-Quant-Nexus](https://github.com/rushi-7388/Crypto-Quant-Nexus) |
-| **Version** | 3.0.0 |
+| **Version** | 4.0.0 |
 | **License** | [MIT](LICENSE) © 2026 Rushi Dave |
 
 Use it to:
@@ -48,6 +48,7 @@ Use it to:
 | 4 | **Vol Surface** | [`vol-surface/`](vol-surface/) | 3D implied volatility surface, smile/skew, Black–Scholes Greeks |
 | 5 | **Regime Nexus** | [`regime-nexus/`](regime-nexus/) | K-Means regime detection (bull / bear / accumulation / panic), transition matrix |
 | ★ | **Alpha Terminal** | [`alpha-terminal/`](alpha-terminal/) | **Flagship** — multi-signal fusion, backtests, universe rank, data quality |
+| ★ | **Ops Dashboard** | [`ops-dashboard/`](ops-dashboard/) | Event pipeline telemetry, canary status, and audit integrity |
 | — | **Nexus Hub** | [`nexus-hub/`](nexus-hub/) | Central launcher and deployment entry point |
 
 ---
@@ -199,6 +200,14 @@ streamlit run alpha-terminal/app.py
 
 Unified research UI: composite alpha, purged walk-forward backtests, universe ranking.
 
+### Run Ops Dashboard (live consumer view)
+
+```bash
+streamlit run ops-dashboard/app.py
+```
+
+Monitors requests vs scored outputs, canary policy state, and signed audit-chain health.
+
 ### Run the hub (launcher)
 
 ```bash
@@ -342,6 +351,22 @@ All apps import from `quant_core` for consistent behavior:
 
 **API v2:** `/v2/alpha/composite`, `/v2/alpha/universe-rank`, `/v2/research/backtest/flow`, `/v2/data/quality`, `/v2/universe`
 
+**LLM Quant Copilot (v4.1):**
+- `/v2/copilot/status`, `/v2/copilot/index`, `/v2/copilot/ask` — RAG over audit, events, model cards, backtests
+- Providers: `mock` (CI default), `ollama`, `openai` via `COPILOT_LLM_PROVIDER`
+- UI: Ops Dashboard + Nexus Hub · See [docs/COPILOT.md](docs/COPILOT.md)
+
+**Forward-Deployed extensions (v4):**
+- `/v2/features/parity` — online/offline feature store parity against YAML contracts
+- `/v2/alpha/shadow` — primary vs shadow model scoring with canary routing metrics
+- `/v2/events/inference-request` — event-driven inference request publishing (Kafka/Redpanda)
+- `/v2/events/dashboard` — live consumer dashboard payload (requests vs outputs)
+- `/v2/execution/simulate` — slippage/fees/latency execution simulation
+- `/v2/portfolio/optimize` — constrained optimizer with stress and risk-budget report
+- `/v2/canary/status`, `/v2/canary/evaluate` — auto promote/rollback canary policy engine
+- `/v2/audit/verify` — signed tamper-evident audit chain verification
+- Trace headers (`x-trace-id`) + immutable decision audit trail (`artifacts/audit/decisions.jsonl`)
+
 See [docs/RESEARCH.md](docs/RESEARCH.md) for methodology.
 
 Extend `quant_core` once — all products and the REST API inherit the upgrade.
@@ -364,8 +389,9 @@ Extend `quant_core` once — all products and the REST API inherit the upgrade.
 |------|------|
 | [`.streamlit/config.toml`](.streamlit/config.toml) | Theme colors, server headless mode |
 | [`quant_core/brand.py`](quant_core/brand.py) | Product name, version, author, GitHub URL |
-| Per-module `requirements.txt` | Same stack as root; use root file for deploy |
-| [`.env.example`](.env.example) | `LOG_LEVEL`, `API_PORT`, `API_DOCS_URL`, `MLFLOW_TRACKING_URI` |
+| [`requirements.txt`](requirements.txt) | Single dependency file for all apps, API, and Docker |
+| [`requirements-dev.txt`](requirements-dev.txt) | pytest, Ruff, httpx (CI and local dev) |
+| [`.env.example`](.env.example) | `LOG_LEVEL`, `API_PORT`, `API_DOCS_URL`, `MLFLOW_TRACKING_URI`, copilot LLM vars |
 | [`docs/deploy-render.md`](docs/deploy-render.md) | Render split deploy (hub + API) |
 
 No API keys are required for the default demo. Live CCXT calls use public endpoints; rate limits may apply.
@@ -384,6 +410,7 @@ Copy `.env.example` to `.env` when running API, training, or Compose locally.
 - [x] Multi-signal alpha fusion + walk-forward backtests (v3)
 - [x] 6-asset universe, parquet cache, data quality contracts (v3)
 - [x] Alpha Terminal flagship research UI (v3)
+- [x] LLM Quant Copilot + RAG over audit/backtest logs (v4.1)
 - [ ] Auth + billing hooks for Pro / Enterprise tiers
 - [ ] Additional assets: altcoins, FX, equity crypto proxies
 

@@ -3,16 +3,25 @@
 from __future__ import annotations
 
 import os
+import uuid
+from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from pydantic import BaseModel, Field
 
+from quant_core.audit import append_decision_audit, verify_audit_chain
 from quant_core.brand import AUTHOR, BRAND, VERSION
+from quant_core.canary import apply_canary_update, load_canary_state
+from quant_core.copilot.service import ask as copilot_ask
+from quant_core.copilot.service import copilot_status, rebuild_index as copilot_rebuild_index
 from quant_core.data import fetch_funding_rates_demo, resolve_price_feed
+from quant_core.eventing import kafka_publish
+from quant_core.events_store import REQUEST_LOG, append_event, dashboard_snapshot
+from quant_core.execution import simulate_execution
+from quant_core.feature_store import parity_report
 from quant_core.logging_config import configure_logging
-from quant_core.metrics import annualized_vol, max_drawdown, performance_summary, sharpe_ratio
-from quant_core.ml.model_card import flow_alpha_model_card, regime_nexus_model_card
+from quant_core.metrics import annualized_vol, performance_summary, sharpe_ratio
 from quant_core.ml.flow_model import (
     build_flow_features,
     horizon_bars_from_label,
@@ -20,17 +29,22 @@ from quant_core.ml.flow_model import (
     predict_flow_signal,
     train_flow_model,
 )
+from quant_core.ml.model_card import flow_alpha_model_card, regime_nexus_model_card
 from quant_core.ml.regime_model import (
     detect_regimes,
     load_regime_artifact,
     train_regime_model,
     transition_matrix,
 )
+from quant_core.observability import current_trace_id, end_trace, start_trace
 from quant_core.options import black_scholes_price, greeks, implied_volatility
 from quant_core.platform.catalog import ASSET_UNIVERSE, list_universe
 from quant_core.platform.quality import ohlcv_quality_report
+from quant_core.portfolio import optimize_portfolio, risk_budget_report
 from quant_core.research.alpha_fusion import composite_alpha, fuse_multi_asset
+from quant_core.research.backtest_store import persist_backtest_snapshot
 from quant_core.research.flow_backtest import run_flow_alpha_backtest
+from quant_core.shadow import route_with_shadow
 
 configure_logging(service_name="crypto-quant-api")
 app = FastAPI(
@@ -57,6 +71,38 @@ class GreeksRequest(BaseModel):
     rate: float = 0.0
     volatility: float = Field(..., gt=0)
     option_type: str = "call"
+
+
+class ExecutionRequest(BaseModel):
+    side: str
+    quantity: float = Field(..., gt=0)
+    mid_price: float = Field(..., gt=0)
+    spread_bps: float = 5.0
+    fee_bps: float = 2.0
+    slippage_bps_per_unit: float = 0.25
+    latency_ms: float = 25.0
+
+
+class CanaryMetricsRequest(BaseModel):
+    avg_divergence: float = Field(..., ge=0.0, le=5.0)
+    shadow_win_rate: float = Field(..., ge=0.0, le=1.0)
+    samples: int = Field(..., ge=0, le=1_000_000)
+
+
+class CopilotAskRequest(BaseModel):
+    question: str = Field(..., min_length=3, max_length=4000)
+    top_k: int = Field(5, ge=1, le=15)
+
+
+@app.middleware("http")
+async def trace_middleware(request: Request, call_next):
+    incoming = request.headers.get("x-trace-id")
+    ctx = start_trace(incoming or str(uuid.uuid4()))
+    response = await call_next(request)
+    duration_ms = int(end_trace(ctx) * 1000)
+    response.headers["x-trace-id"] = ctx.trace_id
+    response.headers["x-latency-ms"] = str(duration_ms)
+    return response
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])
@@ -120,7 +166,166 @@ def alpha_composite(
     use_live: bool = Query(True),
     window: int = Query(500, ge=200, le=1000),
 ) -> dict[str, Any]:
-    return composite_alpha(symbol, use_live=use_live, window=window)
+    trace_id = current_trace_id()
+    result = composite_alpha(symbol, use_live=use_live, window=window)
+    audit = append_decision_audit(
+        trace_id=trace_id,
+        symbol=symbol,
+        model_version="alpha_fusion_v1",
+        dataset_version="market_feed_v1",
+        decision={
+            "composite_score": result["composite_score"],
+            "recommendation": result["recommendation"],
+        },
+        rationale=result["components"],
+    )
+    return {**result, "trace_id": trace_id, "audit_hash": audit["decision_hash"]}
+
+
+@app.get("/v2/features/parity", tags=["platform"])
+def features_parity(
+    symbol: str = Query("BTC/USDT"),
+    tolerance: float = Query(0.35, ge=0.01, le=2.0),
+) -> dict[str, Any]:
+    return parity_report(symbol=symbol, tolerance=tolerance)
+
+
+@app.get("/v2/alpha/shadow", tags=["research"])
+def alpha_shadow(
+    symbol: str = Query("BTC/USDT"),
+    canary_rate: float = Query(0.1, ge=0.0, le=1.0),
+) -> dict[str, Any]:
+    trace_id = current_trace_id()
+    shadow = route_with_shadow(
+        trace_id=trace_id,
+        primary_fn=lambda: composite_alpha(symbol=symbol, use_live=True),
+        shadow_fn=lambda: composite_alpha(
+            symbol=symbol,
+            use_live=False,
+            weights={"flow": 0.40, "regime": 0.25, "momentum": 0.20, "funding": 0.15},
+        ),
+        canary_rate=canary_rate,
+    )
+    return {
+        "trace_id": trace_id,
+        "routed_to_shadow": shadow.routed_to_shadow,
+        "divergence": shadow.divergence,
+        "primary": shadow.primary,
+        "shadow": shadow.shadow,
+    }
+
+
+@app.post("/v2/events/inference-request", tags=["eventing"])
+async def enqueue_inference_request(
+    symbol: str = Query("BTC/USDT"),
+    use_live: bool = Query(True),
+    window: int = Query(500, ge=200, le=1000),
+) -> dict[str, Any]:
+    trace_id = current_trace_id()
+    bootstrap = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    topic = os.getenv("KAFKA_TOPIC_INFERENCE_REQUEST", "inference.requests")
+    payload = {"trace_id": trace_id, "symbol": symbol, "use_live": use_live, "window": window}
+    append_event(
+        REQUEST_LOG,
+        {
+            **payload,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    try:
+        await kafka_publish(topic=topic, bootstrap_servers=bootstrap, payload=payload)
+        return {"queued": True, "trace_id": trace_id, "topic": topic}
+    except Exception as exc:
+        return {"queued": False, "trace_id": trace_id, "error": str(exc)}
+
+
+@app.get("/v2/events/dashboard", tags=["eventing"])
+def events_dashboard() -> dict[str, Any]:
+    return dashboard_snapshot()
+
+
+@app.get("/v2/canary/status", tags=["research"])
+def canary_status() -> dict[str, Any]:
+    return load_canary_state()
+
+
+@app.post("/v2/canary/evaluate", tags=["research"])
+def canary_evaluate(body: CanaryMetricsRequest) -> dict[str, Any]:
+    return apply_canary_update(
+        avg_divergence=body.avg_divergence,
+        shadow_win_rate=body.shadow_win_rate,
+        samples=body.samples,
+    )
+
+
+@app.get("/v2/audit/verify", tags=["platform"])
+def audit_verify() -> dict[str, Any]:
+    return verify_audit_chain()
+
+
+@app.get("/v2/copilot/status", tags=["copilot"])
+def copilot_status_endpoint() -> dict[str, Any]:
+    return copilot_status()
+
+
+@app.post("/v2/copilot/index", tags=["copilot"])
+def copilot_index() -> dict[str, Any]:
+    return copilot_rebuild_index()
+
+
+@app.post("/v2/copilot/ask", tags=["copilot"])
+def copilot_ask_endpoint(body: CopilotAskRequest) -> dict[str, Any]:
+    result = copilot_ask(body.question, top_k=body.top_k)
+    return {
+        "answer": result.answer,
+        "sources": result.sources,
+        "provider": result.provider,
+        "trace_id": result.trace_id,
+        "chunks_used": result.chunks_used,
+    }
+
+
+@app.post("/v2/execution/simulate", tags=["execution"])
+def execution_simulate(body: ExecutionRequest) -> dict[str, Any]:
+    report = simulate_execution(
+        side=body.side.lower(),  # type: ignore[arg-type]
+        quantity=body.quantity,
+        mid_price=body.mid_price,
+        spread_bps=body.spread_bps,
+        fee_bps=body.fee_bps,
+        slippage_bps_per_unit=body.slippage_bps_per_unit,
+        latency_ms=body.latency_ms,
+    )
+    return report.__dict__
+
+
+@app.get("/v2/portfolio/optimize", tags=["portfolio"])
+def portfolio_optimize(
+    symbols: str = Query("BTC/USDT,ETH/USDT,SOL/USDT"),
+    use_live: bool = Query(False),
+    window: int = Query(400, ge=200, le=1000),
+) -> dict[str, Any]:
+    chosen = [s.strip() for s in symbols.split(",") if s.strip()]
+    series = {}
+    for sym in chosen:
+        df, _ = resolve_price_feed(sym, use_live=use_live)
+        series[sym] = df["close"].pct_change().tail(window).reset_index(drop=True)
+    import pandas as pd
+
+    rets = pd.DataFrame(series).dropna()
+    if rets.empty or len(rets.columns) < 2:
+        return {"error": "not_enough_data", "symbols": chosen}
+    opt = optimize_portfolio(rets)
+    rb = risk_budget_report(opt.weights, rets.cov())
+    return {
+        "symbols": chosen,
+        "weights": opt.weights,
+        "expected_return": opt.expected_return,
+        "expected_vol": opt.expected_vol,
+        "stress_loss": opt.stress_loss,
+        "optimizer_success": opt.success,
+        "risk_budget": rb,
+    }
 
 
 @app.get("/v2/alpha/universe-rank", tags=["research"])
@@ -140,13 +345,22 @@ def backtest_flow(
 ) -> dict[str, Any]:
     df, feed = resolve_price_feed(symbol, use_live=use_live)
     result = run_flow_alpha_backtest(df.tail(window), symbol=symbol)
-    return {
+    payload = {
         "symbol": symbol,
         "feed": feed,
         "metrics": result.metrics,
         "folds": result.folds,
         "oos_points": len(result.equity_curve),
     }
+    persist_backtest_snapshot(
+        symbol=symbol,
+        feed=feed,
+        metrics=result.metrics,
+        folds=result.folds,
+        oos_points=len(result.equity_curve),
+        source="api",
+    )
+    return payload
 
 
 @app.get("/v2/ml/model-cards", tags=["machine-learning"])

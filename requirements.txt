@@ -14,3 +14,5 @@ joblib>=1.4.0
 python-dotenv>=1.0.0
 pyarrow>=15.0.0
 pyyaml>=6.0.0
+aiokafka>=0.11.0
+requests>=2.32.0

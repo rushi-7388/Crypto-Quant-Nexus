@@ -1,17 +1,23 @@
-"""Crypto Quant Nexus 3.0 — unified product launcher & portfolio hub."""
+"""Crypto Quant Nexus 4.0 — unified product launcher & portfolio hub."""
 
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import os
+
+import requests
 import streamlit as st
 
 from quant_core.brand import AUTHOR, BRAND, GITHUB, GITHUB_REPO, PLATFORM_EDITION, TAGLINE, VERSION
+from quant_core.copilot.ui_streamlit import render_copilot_panel
 from quant_core.deploy import resolve_api_docs_url
 from quant_core.theme import inject_theme, render_footer
 
-st.set_page_config(page_title=f"{BRAND} 3.0", layout="wide", page_icon="🚀")
+API_BASE = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
+
+st.set_page_config(page_title=f"{BRAND} 4.0", layout="wide", page_icon="🚀")
 inject_theme()
 
 api_docs_url = resolve_api_docs_url()
@@ -21,19 +27,21 @@ st.title("Quantitative Crypto Analytics Suite")
 st.markdown(f"**{TAGLINE}**")
 st.markdown(f"Built by [**{AUTHOR}**]({GITHUB}) · 2026 · [Repository]({GITHUB_REPO})")
 
-plat1, plat2, plat3, plat4 = st.columns(4)
+plat1, plat2, plat3, plat4, plat5 = st.columns(5)
 with plat1:
     st.link_button("Alpha Terminal", "http://localhost:8502", use_container_width=True, help="Run: streamlit run alpha-terminal/app.py")
 with plat2:
-    st.link_button("API docs (Swagger)", api_docs_url, use_container_width=True)
+    st.link_button("Ops Dashboard", "http://localhost:8503", use_container_width=True, help="Run: streamlit run ops-dashboard/app.py")
 with plat3:
-    st.link_button("CI pipeline", f"{GITHUB_REPO}/actions/workflows/ci.yml", use_container_width=True)
+    st.link_button("API docs (Swagger)", api_docs_url, use_container_width=True)
 with plat4:
+    st.link_button("CI pipeline", f"{GITHUB_REPO}/actions/workflows/ci.yml", use_container_width=True)
+with plat5:
     st.link_button("Research docs", f"{GITHUB_REPO}/blob/main/docs/RESEARCH.md", use_container_width=True)
 
 st.info(
-    "**Flagship v3:** [Alpha Terminal](../alpha-terminal) fuses flow, regime, momentum & funding "
-    "with purged walk-forward backtests and a 6-asset institutional universe."
+    "**Flagship v4:** Alpha Terminal + Ops Dashboard deliver feature parity checks, canary automation, "
+    "event-driven inference, and signed audit-chain compliance."
 )
 
 PRODUCTS = [
@@ -43,6 +51,13 @@ PRODUCTS = [
         "flagship": True,
         "desc": "Multi-signal fusion · universe rank · walk-forward backtest · data quality",
         "tech": "/v2/alpha/composite · /v2/research/backtest/flow",
+    },
+    {
+        "name": "Ops Dashboard",
+        "folder": "ops-dashboard",
+        "flagship": True,
+        "desc": "Kafka requests vs outputs · canary status · audit-chain integrity",
+        "tech": "/v2/events/dashboard · /v2/canary/status · /v2/audit/verify · /v2/copilot/ask",
     },
     {
         "name": "MM Pro",
@@ -92,8 +107,9 @@ st.code(
     """pip install -r requirements.txt
 make train                    # ML artifacts
 streamlit run alpha-terminal/app.py   # flagship research UI
+streamlit run ops-dashboard/app.py    # live ops dashboard
 streamlit run nexus-hub/app.py        # this launcher
-uvicorn api.main:app --port 8000      # REST + /v2/alpha/*""",
+uvicorn api.main:app --port 8000      # REST + /v2/*""",
     language="bash",
 )
 
@@ -119,5 +135,23 @@ with tab_render:
 
 with tab_docker:
     st.code("docker compose up --build", language="bash")
+
+st.divider()
+
+
+def _api_get(path: str) -> dict:
+    r = requests.get(f"{API_BASE}{path}", timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def _api_post(path: str, payload: dict | None) -> dict:
+    r = requests.post(f"{API_BASE}{path}", json=payload or {}, timeout=120)
+    r.raise_for_status()
+    return r.json()
+
+
+st.caption(f"Copilot API: `{API_BASE}`")
+render_copilot_panel(_api_get, _api_post)
 
 render_footer()

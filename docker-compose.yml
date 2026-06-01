@@ -13,6 +13,20 @@ services:
       timeout: 5s
       retries: 3
 
+  ops-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: streamlit run ops-dashboard/app.py --server.port 8503 --server.address 0.0.0.0
+    ports:
+      - "8503:8503"
+    environment:
+      LOG_LEVEL: INFO
+      API_BASE_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_started
+
   api:
     build:
       context: .
@@ -24,8 +38,29 @@ services:
     environment:
       LOG_LEVEL: INFO
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      KAFKA_TOPIC_INFERENCE_RESULT: inference.results
     depends_on:
       mlflow:
+        condition: service_started
+      redpanda:
+        condition: service_started
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: python worker/inference_worker.py
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./worker:/app/worker
+    environment:
+      LOG_LEVEL: INFO
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      KAFKA_TOPIC_INFERENCE_REQUEST: inference.requests
+      KAFKA_TOPIC_INFERENCE_RESULT: inference.results
+    depends_on:
+      redpanda:
         condition: service_started
 
   mlflow:
@@ -40,6 +75,28 @@ services:
       --port 5000
       --backend-store-uri sqlite:///mlflow/mlflow.db
       --default-artifact-root /mlflow/artifacts
+
+  redpanda:
+    image: redpandadata/redpanda:v24.1.9
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - "512M"
+      - --reserve-memory
+      - "0M"
+      - --check=false
+      - --node-id
+      - "0"
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://redpanda:9092
+    ports:
+      - "9092:9092"
 
 volumes:
   mlflow_data:

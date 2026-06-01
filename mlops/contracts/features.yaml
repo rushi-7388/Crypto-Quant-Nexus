@@ -1,0 +1,33 @@
+version: 1
+owner: quant_research
+features:
+  - name: flow_score
+    dtype: float
+    min: -1.0
+    max: 1.0
+    nullable: false
+  - name: regime_score
+    dtype: float
+    min: -1.0
+    max: 1.0
+    nullable: false
+  - name: momentum_score
+    dtype: float
+    min: -1.0
+    max: 1.0
+    nullable: false
+  - name: funding_score
+    dtype: float
+    min: -1.0
+    max: 1.0
+    nullable: false
+  - name: composite_score
+    dtype: float
+    min: -1.0
+    max: 1.0
+    nullable: false
+  - name: conviction
+    dtype: float
+    min: 0.0
+    max: 1.0
+    nullable: false

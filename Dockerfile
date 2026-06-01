@@ -1,3 +1,4 @@
+# Streamlit hub + all analytics apps (port 8501). API uses Dockerfile.api.
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -10,6 +11,7 @@ COPY flow-alpha/ ./flow-alpha/
 COPY vol-surface/ ./vol-surface/
 COPY regime-nexus/ ./regime-nexus/
 COPY alpha-terminal/ ./alpha-terminal/
+COPY ops-dashboard/ ./ops-dashboard/
 COPY .streamlit/ ./.streamlit/
 
 RUN pip install --no-cache-dir -r requirements.txt
